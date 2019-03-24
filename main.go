@@ -36,6 +36,13 @@ func readConfig() Config {
 	return config
 }
 
+func reply(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
+	text := fmt.Sprintf("> %s", update.Message.Text)
+	msg := tgbotapi.NewMessage(update.Message.Chat.ID, text)
+
+	bot.Send(msg)
+}
+
 func main() {
 	config := readConfig()
 
@@ -63,10 +70,6 @@ func main() {
 
 		log.Printf("[%s] %s", update.Message.From.UserName, update.Message.Text)
 
-		// Reply
-		text := fmt.Sprintf("> %s", update.Message.Text)
-		msg := tgbotapi.NewMessage(update.Message.Chat.ID, text)
-
-		bot.Send(msg)
+		go reply(bot, update)
 	}
 }
