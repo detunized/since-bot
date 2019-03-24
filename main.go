@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -8,6 +9,7 @@ import (
 	"os"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 // Config represents the structure of the config.json file
@@ -36,15 +38,49 @@ func readConfig() Config {
 	return config
 }
 
-func reply(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
-	text := fmt.Sprintf("> %s", update.Message.Text)
-	msg := tgbotapi.NewMessage(update.Message.Chat.ID, text)
+func store(message *tgbotapi.Message, db *sql.DB) {
+	_, err := db.Exec("INSERT INTO events (user, name, date) VALUES ($1, $2, $3);",
+		message.From.ID,
+		message.Text,
+		message.Date)
+	if err != nil {
+		log.Panic(err)
+	}
+}
+
+func reply(message *tgbotapi.Message, db *sql.DB, bot *tgbotapi.BotAPI) {
+	store(message, db)
+
+	text := fmt.Sprintf("> %s", message.Text)
+	msg := tgbotapi.NewMessage(message.Chat.ID, text)
 
 	bot.Send(msg)
 }
 
+func openDatabase() *sql.DB {
+	db, err := sql.Open("sqlite3", "./since.db")
+	if err != nil {
+		log.Panic(err)
+	}
+
+	_, err = db.Exec("CREATE TABLE IF NOT EXISTS events (" +
+		"id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, " +
+		"user INTEGER, " +
+		"name TEXT, " +
+		"date INTEGER);")
+
+	if err != nil {
+		log.Panic(err)
+	}
+
+	return db
+}
+
 func main() {
 	config := readConfig()
+
+	db := openDatabase()
+	defer db.Close()
 
 	bot, err := tgbotapi.NewBotAPI(config.Token)
 	if err != nil {
@@ -70,6 +106,6 @@ func main() {
 
 		log.Printf("[%s] %s", update.Message.From.UserName, update.Message.Text)
 
-		go reply(bot, update)
+		go reply(update.Message, db, bot)
 	}
 }
