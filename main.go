@@ -46,11 +46,17 @@ func store(message *tgbotapi.Message, db *sqlitex.Pool) {
 	statement.SetText("$name", message.Text)
 	statement.SetInt64("$date", int64(message.Date))
 
-	row, err := statement.Step()
+	_, err := statement.Step()
 	if err != nil {
 		log.Panic(err)
 	}
-	log.Print("row ", row)
+
+	// Done with this query
+	// TODO: Is it really needed? What happens when this isn't called?
+	err = statement.Reset()
+	if err != nil {
+		log.Panic(err)
+	}
 }
 
 func reply(message *tgbotapi.Message, db *sqlitex.Pool, bot *tgbotapi.BotAPI) {
@@ -79,11 +85,13 @@ func openDB() *sqlitex.Pool {
 }
 
 func execSQL(db *sqlitex.Pool, sql string) {
-	conn := db.Get(nil)
-	defer conn.Close()
+	connection := db.Get(nil)
+	defer db.Put(connection)
 
-	s := conn.Prep(sql)
-	s.Step()
+	err := sqlitex.Exec(connection, sql, nil)
+	if err != nil {
+		log.Panic(err)
+	}
 }
 
 func main() {
