@@ -41,19 +41,14 @@ func store(message *tgbotapi.Message, db *sqlitex.Pool) {
 	connection := db.Get(nil)
 	defer db.Put(connection)
 
-	statement := connection.Prep("INSERT INTO events (user, name, date) VALUES ($user, $name, $date);")
-	statement.SetInt64("$user", int64(message.From.ID))
-	statement.SetText("$name", message.Text)
-	statement.SetInt64("$date", int64(message.Date))
+	err := sqlitex.Exec(
+		connection,
+		"INSERT INTO events (user, name, date) VALUES (?, ?, ?);",
+		nil,
+		message.From.ID,
+		message.Text,
+		message.Date)
 
-	_, err := statement.Step()
-	if err != nil {
-		log.Panic(err)
-	}
-
-	// Done with this query
-	// TODO: Is it really needed? What happens when this isn't called?
-	err = statement.Reset()
 	if err != nil {
 		log.Panic(err)
 	}
