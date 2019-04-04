@@ -12,6 +12,7 @@ import (
 
 	"crawshaw.io/sqlite/sqlitex"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
+	"github.com/hako/durafmt"
 )
 
 // Config represents the structure of the config.json file
@@ -57,17 +58,22 @@ func store(message *tgbotapi.Message, db *sqlitex.Pool) {
 	}
 }
 
-func formatResponse(date int64, name string) string {
-	last := time.Unix(date, 0)
-	return fmt.Sprintf("Previous '%s' happened on '%v'", name, last)
+func formatResponse(name string, date int64, prevDate int64) string {
+	prev := time.Unix(prevDate, 0)
+	now := time.Unix(date, 0)
+	duration := durafmt.ParseShort(now.Sub(prev))
+	return fmt.Sprintf("%s since last '%s'", duration, name)
 }
 
 func reply(message *tgbotapi.Message, db *sqlitex.Pool, bot *tgbotapi.BotAPI) {
 	connection := db.Get(nil)
 	defer db.Put(connection)
 
-	// Default response
+	// Get stuff out the incoming message
 	name := message.Text
+	date := int64(message.Date)
+
+	// Default response
 	response := fmt.Sprintf("Fist time for '%s'", name)
 
 	// Get the last event with the same name and format the response
@@ -77,7 +83,7 @@ func reply(message *tgbotapi.Message, db *sqlitex.Pool, bot *tgbotapi.BotAPI) {
 			"ORDER BY date "+
 			"DESC LIMIT 1",
 		func(s *sqlite.Stmt) error {
-			response = formatResponse(s.GetInt64("date"), name)
+			response = formatResponse(name, date, s.GetInt64("date"))
 			return nil
 		},
 		message.From.ID,
