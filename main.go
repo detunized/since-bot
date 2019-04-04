@@ -6,6 +6,9 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"time"
+
+	"crawshaw.io/sqlite"
 
 	"crawshaw.io/sqlite/sqlitex"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
@@ -54,13 +57,42 @@ func store(message *tgbotapi.Message, db *sqlitex.Pool) {
 	}
 }
 
+func formatResponse(date int64, name string) string {
+	last := time.Unix(date, 0)
+	return fmt.Sprintf("Previous '%s' happened on '%v'", name, last)
+}
+
 func reply(message *tgbotapi.Message, db *sqlitex.Pool, bot *tgbotapi.BotAPI) {
+	connection := db.Get(nil)
+	defer db.Put(connection)
+
+	// Default response
+	name := message.Text
+	response := fmt.Sprintf("Fist time for '%s'", name)
+
+	// Get the last event with the same name and format the response
+	err := sqlitex.Exec(connection,
+		"SELECT date FROM events "+
+			"WHERE user = ? AND name = ? "+
+			"ORDER BY date "+
+			"DESC LIMIT 1",
+		func(s *sqlite.Stmt) error {
+			response = formatResponse(s.GetInt64("date"), name)
+			return nil
+		},
+		message.From.ID,
+		name)
+
+	if err != nil {
+		log.Panic(err)
+	}
+
+	// Send the message
+	go func() {
+		bot.Send(tgbotapi.NewMessage(message.Chat.ID, response))
+	}()
+
 	store(message, db)
-
-	text := fmt.Sprintf("> %s", message.Text)
-	msg := tgbotapi.NewMessage(message.Chat.ID, text)
-
-	bot.Send(msg)
 }
 
 func openDB() *sqlitex.Pool {
