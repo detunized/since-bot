@@ -41,23 +41,6 @@ func readConfig() Config {
 	return config
 }
 
-func store(message *tgbotapi.Message, db *sqlitex.Pool) {
-	connection := db.Get(nil)
-	defer db.Put(connection)
-
-	err := sqlitex.Exec(
-		connection,
-		"INSERT INTO events (user, name, date) VALUES (?, ?, ?);",
-		nil,
-		message.From.ID,
-		message.Text,
-		message.Date)
-
-	if err != nil {
-		log.Panic(err)
-	}
-}
-
 func formatResponse(name string, date int64, prevDate int64) string {
 	prev := time.Unix(prevDate, 0)
 	now := time.Unix(date, 0)
@@ -65,13 +48,29 @@ func formatResponse(name string, date int64, prevDate int64) string {
 	return fmt.Sprintf("%s since last '%s'", duration, name)
 }
 
-func reply(message *tgbotapi.Message, db *sqlitex.Pool, bot *tgbotapi.BotAPI) {
-	connection := db.Get(nil)
-	defer db.Put(connection)
+type context struct {
+	message *tgbotapi.Message
+	db      *sqlitex.Pool
+	bot     *tgbotapi.BotAPI
+}
+
+func (c context) respond(response string) {
+	log.Printf("Responding to '%s' with '%s'", c.message.From, response)
+
+	_, err := c.bot.Send(tgbotapi.NewMessage(c.message.Chat.ID, response))
+	if err != nil {
+		log.Panic(err)
+	}
+}
+
+// /add command
+func (c context) add(text string) {
+	connection := c.db.Get(nil)
+	defer c.db.Put(connection)
 
 	// Get stuff out the incoming message
-	name := message.Text
-	date := int64(message.Date)
+	name := text
+	date := int64(c.message.Date)
 
 	// Default response
 	response := fmt.Sprintf("Fist time for '%s'", name)
@@ -86,19 +85,44 @@ func reply(message *tgbotapi.Message, db *sqlitex.Pool, bot *tgbotapi.BotAPI) {
 			response = formatResponse(name, date, s.GetInt64("date"))
 			return nil
 		},
-		message.From.ID,
+		c.message.From.ID,
 		name)
 
 	if err != nil {
 		log.Panic(err)
 	}
 
-	// Send the message
-	go func() {
-		bot.Send(tgbotapi.NewMessage(message.Chat.ID, response))
-	}()
+	go c.respond(response)
 
-	store(message, db)
+	// Store the new item in the database
+	err = sqlitex.Exec(
+		connection,
+		"INSERT INTO events (user, name, date) VALUES (?, ?, ?);",
+		nil,
+		c.message.From.ID,
+		text,
+		date)
+
+	if err != nil {
+		log.Panic(err)
+	}
+}
+
+func reply(message *tgbotapi.Message, db *sqlitex.Pool, bot *tgbotapi.BotAPI) {
+	// Store all the variables into the context not to pass around all the arguments everywhere
+	c := context{message: message, db: db, bot: bot}
+
+	if message.IsCommand() {
+		switch command := message.Command(); command {
+		case "a":
+		case "add":
+			c.add(message.CommandArguments())
+		default:
+			c.respond(fmt.Sprintf("Don't know what to do with '%s'", command))
+		}
+	} else {
+		c.add(message.Text)
+	}
 }
 
 func openDB() *sqlitex.Pool {
