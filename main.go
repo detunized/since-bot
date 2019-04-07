@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -63,8 +65,19 @@ func (c context) respond(response string) {
 	}
 }
 
+func (c context) sendFile(filename string, content []byte) {
+	log.Printf("Sending a file names '%s' to '%s'", filename, c.message.From)
+
+	file := tgbotapi.FileBytes{Name: filename, Bytes: content}
+	_, err := c.bot.Send(tgbotapi.NewDocumentUpload(c.message.Chat.ID, file))
+	if err != nil {
+		log.Panic(err)
+	}
+}
+
 // /add command
 func (c context) add(text string) {
+	// DB
 	connection := c.db.Get(nil)
 	defer c.db.Put(connection)
 
@@ -92,6 +105,7 @@ func (c context) add(text string) {
 		log.Panic(err)
 	}
 
+	// Tell the user about the last event
 	go c.respond(response)
 
 	// Store the new item in the database
@@ -108,15 +122,60 @@ func (c context) add(text string) {
 	}
 }
 
+func (c context) export(format string) {
+	switch format {
+	case "", "csv":
+		break
+	default:
+		go c.respond(fmt.Sprintf("Format '%s' is not supported", format))
+		return
+	}
+
+	// DB
+	connection := c.db.Get(nil)
+	defer c.db.Put(connection)
+
+	// CSV writer
+	buffer := &bytes.Buffer{}
+	csv := csv.NewWriter(buffer)
+
+	// This is most likely a rarely used command, so we use a non caching version
+	err := sqlitex.ExecTransient(
+		connection,
+		"SELECT name, date FROM events WHERE user = ? ORDER BY date",
+		func(s *sqlite.Stmt) error {
+			err := csv.Write([]string{
+				s.GetText("name"),
+				time.Unix(s.GetInt64("date"), 0).Format(time.RFC3339),
+			})
+			if err != nil {
+				log.Panic(err)
+			}
+			return nil
+		},
+		c.message.From.ID)
+
+	if err != nil {
+		log.Panic(err)
+	}
+
+	// Never forget to flush when you're done
+	csv.Flush()
+
+	// There you go
+	go c.sendFile("data.csv", buffer.Bytes())
+}
+
 func reply(message *tgbotapi.Message, db *sqlitex.Pool, bot *tgbotapi.BotAPI) {
 	// Store all the variables into the context not to pass around all the arguments everywhere
 	c := context{message: message, db: db, bot: bot}
 
 	if message.IsCommand() {
 		switch command := message.Command(); command {
-		case "a":
-		case "add":
+		case "a", "add":
 			c.add(message.CommandArguments())
+		case "e", "export":
+			c.export(message.CommandArguments())
 		default:
 			c.respond(fmt.Sprintf("Don't know what to do with '%s'", command))
 		}
