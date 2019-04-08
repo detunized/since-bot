@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"crawshaw.io/sqlite"
@@ -56,14 +57,24 @@ type context struct {
 	bot     *tgbotapi.BotAPI
 }
 
-func (c context) respond(response string) {
-	log.Printf("Responding to '%s' with '%s'", c.message.From, response)
+func (c context) sendResponse(response string, format string) {
+	log.Printf("Responding to '%s' in '%s' with '%s'", c.message.From, format, response)
 
 	message := tgbotapi.NewMessage(c.message.Chat.ID, response)
+	message.ParseMode = format
+
 	_, err := c.bot.Send(message)
 	if err != nil {
 		log.Panic(err)
 	}
+}
+
+func (c context) sendText(response string) {
+	c.sendResponse(response, "")
+}
+
+func (c context) sendMarkdown(response string) {
+	c.sendResponse(response, "Markdown")
 }
 
 func (c context) sendFile(filename string, content []byte) {
@@ -127,7 +138,7 @@ func (c context) add(text string) {
 	}
 
 	// Tell the user about the last event
-	go c.respond(response)
+	go c.sendText(response)
 
 	// Store the new item in the database
 	err = sqlitex.Exec(
@@ -179,12 +190,43 @@ func (c context) export() {
 	go c.sendFile("data.csv", buffer.Bytes())
 }
 
+func (c context) top() {
+	// DB
+	connection := c.db.Get(nil)
+	defer c.db.Put(connection)
+
+	response := strings.Builder{}
+	response.WriteString("These are your 10 most logged events:\n```\n")
+
+	// This is most likely a rarely used command, so we use a non caching version
+	err := sqlitex.ExecTransient(
+		connection,
+		"SELECT name, COUNT(name) freq FROM events "+
+			"WHERE user = ? "+
+			"GROUP BY name "+
+			"ORDER BY freq DESC "+
+			"LIMIT 10",
+		func(s *sqlite.Stmt) error {
+			response.WriteString(fmt.Sprintf("%s: %d\n", s.GetText("name"), s.GetInt64("freq")))
+			return nil
+		},
+		c.message.From.ID)
+
+	if err != nil {
+		log.Panic(err)
+	}
+
+	response.WriteString("```\n")
+
+	go c.sendMarkdown(response.String())
+}
+
 func (c context) test() {
-	go c.respond("It works")
+	go c.sendText("It works")
 }
 
 func (c context) help() {
-	go c.sendKeyboard("/add", "/export", "/help", "/test")
+	go c.sendKeyboard("/add", "/export", "/help", "/test", "/top")
 }
 
 func reply(message *tgbotapi.Message, db *sqlitex.Pool, bot *tgbotapi.BotAPI) {
@@ -199,10 +241,12 @@ func reply(message *tgbotapi.Message, db *sqlitex.Pool, bot *tgbotapi.BotAPI) {
 			c.export()
 		case "h", "help":
 			c.help()
-		case "t", "test":
+		case "t", "top":
+			c.top()
+		case "test":
 			c.test()
 		default:
-			c.respond(fmt.Sprintf("Don't know what to do with '%s'", command))
+			c.sendText(fmt.Sprintf("Don't know what to do with '%s'", command))
 		}
 	} else {
 		c.add(message.Text)
