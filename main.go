@@ -18,6 +18,10 @@ import (
 	"github.com/hako/durafmt"
 )
 
+//
+// Utils
+//
+
 // Config represents the structure of the config.json file
 type Config struct {
 	Token string `json:"token"`
@@ -50,6 +54,33 @@ func formatResponse(name string, date int64, prevDate int64) string {
 	duration := durafmt.ParseShort(now.Sub(prev))
 	return fmt.Sprintf("%s since last '%s'", duration, name)
 }
+
+func buildSinceResponse(name string, now int64, userID int64, connection *sqlite.Conn) string {
+	response := ""
+
+	// Get the last event with the same name and format the response
+	err := sqlitex.Exec(connection,
+		"SELECT date FROM events "+
+			"WHERE user = ? AND name = ? "+
+			"ORDER BY date "+
+			"DESC LIMIT 1",
+		func(s *sqlite.Stmt) error {
+			response = formatResponse(name, now, s.GetInt64("date"))
+			return nil
+		},
+		userID,
+		name)
+
+	if err != nil {
+		log.Panic(err)
+	}
+
+	return response
+}
+
+//
+// context
+//
 
 type context struct {
 	message *tgbotapi.Message
@@ -119,6 +150,11 @@ func (c context) sendKeyboard(text string, names ...string) {
 //
 
 func (c context) add(text string) {
+	if text == "" {
+		go c.sendText("Please provide a name: *name* or /add *name* if you'd like to be formal")
+		return
+	}
+
 	// DB
 	connection := c.db.Get(nil)
 	defer c.db.Put(connection)
@@ -127,36 +163,22 @@ func (c context) add(text string) {
 	name := text
 	date := int64(c.message.Date)
 
-	// Default response
-	response := fmt.Sprintf("Fist time for '%s'", name)
-
-	// Get the last event with the same name and format the response
-	err := sqlitex.Exec(connection,
-		"SELECT date FROM events "+
-			"WHERE user = ? AND name = ? "+
-			"ORDER BY date "+
-			"DESC LIMIT 1",
-		func(s *sqlite.Stmt) error {
-			response = formatResponse(name, date, s.GetInt64("date"))
-			return nil
-		},
-		c.message.From.ID,
-		name)
-
-	if err != nil {
-		log.Panic(err)
+	// /add is /since + store
+	response := buildSinceResponse(name, date, int64(c.message.From.ID), connection)
+	if response == "" {
+		response = fmt.Sprintf("First time for '%s'", name)
 	}
 
-	// Tell the user about the last event
+	// /since
 	go c.sendText(response)
 
 	// Store the new item in the database
-	err = sqlitex.Exec(
+	err := sqlitex.Exec(
 		connection,
 		"INSERT INTO events (user, name, date) VALUES (?, ?, ?);",
 		nil,
 		c.message.From.ID,
-		text,
+		name,
 		date)
 
 	if err != nil {
@@ -215,10 +237,9 @@ Available commands are:
 `)
 }
 
-// TODO: This function has a lot of code shared with add. DRY it up!
 func (c context) since(name string) {
 	if name == "" {
-		go c.sendMarkdown("Please specify the event name /since *name*")
+		go c.sendMarkdown("Please provide a name: /since *name*")
 		return
 	}
 
@@ -226,27 +247,11 @@ func (c context) since(name string) {
 	connection := c.db.Get(nil)
 	defer c.db.Put(connection)
 
-	// Default response
-	response := fmt.Sprintf("You don't have any events named '%s'", name)
-
-	// Get the last event with the same name and format the response
-	err := sqlitex.Exec(connection,
-		"SELECT date FROM events "+
-			"WHERE user = ? AND name = ? "+
-			"ORDER BY date "+
-			"DESC LIMIT 1",
-		func(s *sqlite.Stmt) error {
-			response = formatResponse(name, int64(c.message.Date), s.GetInt64("date"))
-			return nil
-		},
-		c.message.From.ID,
-		name)
-
-	if err != nil {
-		log.Panic(err)
+	response := buildSinceResponse(name, int64(c.message.Date), int64(c.message.From.ID), connection)
+	if response == "" {
+		response = fmt.Sprintf("You don't have any events named '%s'", name)
 	}
 
-	// Tell the user about the last event
 	go c.sendText(response)
 }
 
