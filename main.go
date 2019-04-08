@@ -233,7 +233,17 @@ func (c context) test() {
 }
 
 func (c context) help() {
-	go c.sendKeyboard("/add", "/export", "/help", "/test", "/top")
+	go c.sendMarkdown(`
+Simply send an event name to log a new event. This is equivalent to the /add command.
+
+Available commands are:
+
+/a, /add *name* - add a new event
+/e, /export - get all your data in CSV format
+/h, /help - this help message
+/t, /top - top 10 events
+/test - test if the bot works
+`)
 }
 
 func reply(message *tgbotapi.Message, db *sqlitex.Pool, bot *tgbotapi.BotAPI) {
