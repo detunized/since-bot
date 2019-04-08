@@ -151,7 +151,7 @@ func (c context) sendKeyboard(text string, names ...string) {
 
 func (c context) add(text string) {
 	if text == "" {
-		go c.sendText("Please provide a name: *name* or /add *name* if you'd like to be formal")
+		c.sendText("Please provide a name: *name* or /add *name* if you'd like to be formal")
 		return
 	}
 
@@ -169,7 +169,7 @@ func (c context) add(text string) {
 		response = fmt.Sprintf("First time for '%s'", name)
 	}
 
-	// /since
+	// Launch this one in parallel with the database access right bellow this
 	go c.sendText(response)
 
 	// Store the new item in the database
@@ -219,11 +219,11 @@ func (c context) export() {
 	csv.Flush()
 
 	// There you go
-	go c.sendFile("data.csv", buffer.Bytes())
+	c.sendFile("data.csv", buffer.Bytes())
 }
 
 func (c context) help() {
-	go c.sendMarkdown(`
+	c.sendMarkdown(`
 Simply send an event name to log a new event. This is equivalent to the /add command.
 
 Available commands are:
@@ -239,7 +239,7 @@ Available commands are:
 
 func (c context) since(name string) {
 	if name == "" {
-		go c.sendMarkdown("Please provide a name: /since *name*")
+		c.sendMarkdown("Please provide a name: /since *name*")
 		return
 	}
 
@@ -252,11 +252,11 @@ func (c context) since(name string) {
 		response = fmt.Sprintf("You don't have any events named '%s'", name)
 	}
 
-	go c.sendText(response)
+	c.sendText(response)
 }
 
 func (c context) test() {
-	go c.sendText("It works")
+	c.sendText("It works")
 }
 
 func (c context) top() {
@@ -287,7 +287,7 @@ func (c context) top() {
 
 	response.WriteString("```\n")
 
-	go c.sendMarkdown(response.String())
+	c.sendMarkdown(response.String())
 }
 
 func reply(message *tgbotapi.Message, db *sqlitex.Pool, bot *tgbotapi.BotAPI) {
@@ -309,7 +309,7 @@ func reply(message *tgbotapi.Message, db *sqlitex.Pool, bot *tgbotapi.BotAPI) {
 		case "test":
 			c.test()
 		default:
-			c.sendText(fmt.Sprintf("Don't know what to do with '%s'", command))
+			c.sendText(fmt.Sprintf("Eh? /%s?", command))
 		}
 	} else {
 		c.add(message.Text)
