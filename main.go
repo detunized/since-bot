@@ -114,7 +114,6 @@ func (c context) sendKeyboard(text string, names ...string) {
 	}
 }
 
-// /add command
 func (c context) add(text string) {
 	// DB
 	connection := c.db.Get(nil)
@@ -197,6 +196,41 @@ func (c context) export() {
 	go c.sendFile("data.csv", buffer.Bytes())
 }
 
+// TODO: This function has a lot of code shared with add. DRY it up!
+func (c context) since(name string) {
+	if name == "" {
+		go c.sendMarkdown("Please specify the event name /since *name*")
+		return
+	}
+
+	// DB
+	connection := c.db.Get(nil)
+	defer c.db.Put(connection)
+
+	// Default response
+	response := fmt.Sprintf("You don't have any events named '%s'", name)
+
+	// Get the last event with the same name and format the response
+	err := sqlitex.Exec(connection,
+		"SELECT date FROM events "+
+			"WHERE user = ? AND name = ? "+
+			"ORDER BY date "+
+			"DESC LIMIT 1",
+		func(s *sqlite.Stmt) error {
+			response = formatResponse(name, int64(c.message.Date), s.GetInt64("date"))
+			return nil
+		},
+		c.message.From.ID,
+		name)
+
+	if err != nil {
+		log.Panic(err)
+	}
+
+	// Tell the user about the last event
+	go c.sendText(response)
+}
+
 func (c context) top() {
 	// DB
 	connection := c.db.Get(nil)
@@ -241,6 +275,7 @@ Available commands are:
 /a, /add *name* - add a new event
 /e, /export - get all your data in CSV format
 /h, /help - this help message
+/s, /since *name* - the time since the last event with a given name was logged
 /t, /top - top 10 events
 /test - test if the bot works
 `)
@@ -258,6 +293,8 @@ func reply(message *tgbotapi.Message, db *sqlitex.Pool, bot *tgbotapi.BotAPI) {
 			c.export()
 		case "h", "help":
 			c.help()
+		case "s", "since":
+			c.since(message.CommandArguments())
 		case "t", "top":
 			c.top()
 		case "test":
