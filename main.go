@@ -59,7 +59,8 @@ type context struct {
 func (c context) respond(response string) {
 	log.Printf("Responding to '%s' with '%s'", c.message.From, response)
 
-	_, err := c.bot.Send(tgbotapi.NewMessage(c.message.Chat.ID, response))
+	message := tgbotapi.NewMessage(c.message.Chat.ID, response)
+	_, err := c.bot.Send(message)
 	if err != nil {
 		log.Panic(err)
 	}
@@ -70,6 +71,26 @@ func (c context) sendFile(filename string, content []byte) {
 
 	file := tgbotapi.FileBytes{Name: filename, Bytes: content}
 	_, err := c.bot.Send(tgbotapi.NewDocumentUpload(c.message.Chat.ID, file))
+	if err != nil {
+		log.Panic(err)
+	}
+}
+
+func (c context) sendKeyboard(names ...string) {
+	log.Printf("Sending a keyboard %v to '%s'", names, c.message.From)
+
+	keys := []tgbotapi.KeyboardButton{}
+	for _, n := range names {
+		keys = append(keys, tgbotapi.NewKeyboardButton(n))
+	}
+
+	keyboard := tgbotapi.NewReplyKeyboard(keys)
+	keyboard.OneTimeKeyboard = true
+
+	message := tgbotapi.NewMessage(c.message.Chat.ID, "Available commands are")
+	message.ReplyMarkup = keyboard
+
+	_, err := c.bot.Send(message)
 	if err != nil {
 		log.Panic(err)
 	}
@@ -166,6 +187,14 @@ func (c context) export(format string) {
 	go c.sendFile("data.csv", buffer.Bytes())
 }
 
+func (c context) test() {
+	go c.respond("It works")
+}
+
+func (c context) help() {
+	go c.sendKeyboard("/add", "/export", "/help", "/test")
+}
+
 func reply(message *tgbotapi.Message, db *sqlitex.Pool, bot *tgbotapi.BotAPI) {
 	// Store all the variables into the context not to pass around all the arguments everywhere
 	c := context{message: message, db: db, bot: bot}
@@ -176,6 +205,10 @@ func reply(message *tgbotapi.Message, db *sqlitex.Pool, bot *tgbotapi.BotAPI) {
 			c.add(message.CommandArguments())
 		case "e", "export":
 			c.export(message.CommandArguments())
+		case "h", "help":
+			c.help()
+		case "t", "test":
+			c.test()
 		default:
 			c.respond(fmt.Sprintf("Don't know what to do with '%s'", command))
 		}
