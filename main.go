@@ -87,19 +87,26 @@ func (c context) sendFile(filename string, content []byte) {
 	}
 }
 
-func (c context) sendKeyboard(names ...string) {
+func (c context) sendKeyboard(text string, names ...string) {
 	log.Printf("Sending a keyboard %v to '%s'", names, c.message.From)
 
-	keys := []tgbotapi.KeyboardButton{}
-	for _, n := range names {
-		keys = append(keys, tgbotapi.NewKeyboardButton(n))
+	var markup interface{}
+	if len(names) > 0 {
+		keys := []tgbotapi.KeyboardButton{}
+		for _, n := range names {
+			keys = append(keys, tgbotapi.NewKeyboardButton(n))
+		}
+
+		keyboard := tgbotapi.NewReplyKeyboard(keys)
+		keyboard.OneTimeKeyboard = true
+
+		markup = keyboard
+	} else {
+		markup = tgbotapi.NewRemoveKeyboard(false)
 	}
 
-	keyboard := tgbotapi.NewReplyKeyboard(keys)
-	keyboard.OneTimeKeyboard = true
-
-	message := tgbotapi.NewMessage(c.message.Chat.ID, "Available commands are")
-	message.ReplyMarkup = keyboard
+	message := tgbotapi.NewMessage(c.message.Chat.ID, text)
+	message.ReplyMarkup = markup
 
 	_, err := c.bot.Send(message)
 	if err != nil {
