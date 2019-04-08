@@ -143,15 +143,7 @@ func (c context) add(text string) {
 	}
 }
 
-func (c context) export(format string) {
-	switch format {
-	case "", "csv":
-		break
-	default:
-		go c.respond(fmt.Sprintf("Format '%s' is not supported", format))
-		return
-	}
-
+func (c context) export() {
 	// DB
 	connection := c.db.Get(nil)
 	defer c.db.Put(connection)
@@ -204,7 +196,7 @@ func reply(message *tgbotapi.Message, db *sqlitex.Pool, bot *tgbotapi.BotAPI) {
 		case "a", "add":
 			c.add(message.CommandArguments())
 		case "e", "export":
-			c.export(message.CommandArguments())
+			c.export()
 		case "h", "help":
 			c.help()
 		case "t", "test":
