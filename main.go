@@ -114,6 +114,10 @@ func (c context) sendKeyboard(text string, names ...string) {
 	}
 }
 
+//
+// Commands
+//
+
 func (c context) add(text string) {
 	// DB
 	connection := c.db.Get(nil)
@@ -196,6 +200,21 @@ func (c context) export() {
 	go c.sendFile("data.csv", buffer.Bytes())
 }
 
+func (c context) help() {
+	go c.sendMarkdown(`
+Simply send an event name to log a new event. This is equivalent to the /add command.
+
+Available commands are:
+
+/a, /add *name* - add a new event
+/e, /export - get all your data in CSV format
+/h, /help - this help message
+/s, /since *name* - the time since the last event with a given name was logged
+/t, /top - top 10 events
+/test - test if the bot works
+`)
+}
+
 // TODO: This function has a lot of code shared with add. DRY it up!
 func (c context) since(name string) {
 	if name == "" {
@@ -231,6 +250,10 @@ func (c context) since(name string) {
 	go c.sendText(response)
 }
 
+func (c context) test() {
+	go c.sendText("It works")
+}
+
 func (c context) top() {
 	// DB
 	connection := c.db.Get(nil)
@@ -260,25 +283,6 @@ func (c context) top() {
 	response.WriteString("```\n")
 
 	go c.sendMarkdown(response.String())
-}
-
-func (c context) test() {
-	go c.sendText("It works")
-}
-
-func (c context) help() {
-	go c.sendMarkdown(`
-Simply send an event name to log a new event. This is equivalent to the /add command.
-
-Available commands are:
-
-/a, /add *name* - add a new event
-/e, /export - get all your data in CSV format
-/h, /help - this help message
-/s, /since *name* - the time since the last event with a given name was logged
-/t, /top - top 10 events
-/test - test if the bot works
-`)
 }
 
 func reply(message *tgbotapi.Message, db *sqlitex.Pool, bot *tgbotapi.BotAPI) {
