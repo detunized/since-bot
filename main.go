@@ -304,7 +304,7 @@ func (c context) topChart(args string) {
 
 	// Chart settings
 	response := chart.BarChart{
-		Title:      "Top events",
+		Title:      fmt.Sprintf("Top %d events", num),
 		TitleStyle: chart.StyleShow(),
 		Background: chart.Style{
 			Padding: chart.Box{
@@ -318,6 +318,7 @@ func (c context) topChart(args string) {
 		YAxis: chart.YAxis{
 			Style:          chart.StyleShow(),
 			ValueFormatter: chart.IntValueFormatter,
+			Range:          &chart.ContinuousRange{Min: 0, Max: values[0].Value},
 		},
 		Bars: values,
 	}
