@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/csv"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -22,7 +23,10 @@ import (
 )
 
 const (
-	debugEnabled    = true
+	debugEnabled = true
+
+	defaultChartDays = 30
+
 	defaultTopCount = 10
 	minTopCount     = 3
 	maxTopCount     = 25
@@ -204,6 +208,100 @@ func (c context) add(text string) {
 	}
 }
 
+func (c context) chart(name string) {
+	if name == "" {
+		c.sendMarkdown("Please provide a name: /chart *name*")
+		return
+	}
+
+	// DB
+	connection := c.db.Get(nil)
+	defer c.db.Put(connection)
+
+	numDays := defaultChartDays
+	now := int64(c.message.Date)
+	days := make([]int64, numDays)
+
+	done := errors.New("Done")
+	err := sqlitex.Exec(
+		connection,
+		"SELECT date FROM events "+
+			"WHERE user = ? AND name = ? "+
+			"ORDER BY date DESC",
+		func(s *sqlite.Stmt) error {
+			date := s.GetInt64("date")
+
+			daysAgo := int((now - date) / (24 * 60 * 60))
+			if daysAgo < 0 {
+				daysAgo = 0
+			}
+
+			if daysAgo >= numDays {
+				return done
+			}
+
+			days[daysAgo]++
+
+			return nil
+		},
+		c.message.From.ID,
+		name)
+
+	if err != nil && err != done {
+		log.Panic(err)
+	}
+
+	values := make([]chart.Value, len(days))
+	maxValue := int64(-1)
+	for i, day := range days {
+		values[len(days)-i-1] = chart.Value{
+			Value: float64(day),
+			Style: chart.Style{
+				Show:        true,
+				StrokeWidth: 1,
+				StrokeColor: chart.ColorAlternateGreen,
+				FillColor:   chart.ColorAlternateGreen,
+			},
+		}
+
+		if day > maxValue {
+			maxValue = day
+		}
+	}
+
+	// Chart settings
+	response := chart.BarChart{
+		Title:      fmt.Sprintf("Activity for '%s' in the last %d days", name, numDays),
+		TitleStyle: chart.StyleShow(),
+		Background: chart.Style{
+			Padding: chart.Box{
+				Top: 40,
+			},
+		},
+		Width:      numDays*22 + 80,
+		Height:     256,
+		BarWidth:   20,
+		BarSpacing: 2,
+		XAxis:      chart.StyleShow(),
+		YAxis: chart.YAxis{
+			Style:          chart.StyleShow(),
+			ValueFormatter: chart.IntValueFormatter,
+			Range:          &chart.ContinuousRange{Min: 0, Max: float64(maxValue)},
+		},
+		Bars: values,
+	}
+
+	// TODO: make a function sendChart
+	// Render
+	buffer := &bytes.Buffer{}
+	err = response.Render(chart.PNG, buffer)
+	if err != nil {
+		log.Panic(err)
+	}
+
+	c.sendImage("chart.png", buffer.Bytes())
+}
+
 func (c context) export() {
 	// DB
 	connection := c.db.Get(nil)
@@ -247,6 +345,7 @@ Simply send an event name to log a new event. This is equivalent to the /add com
 Available commands are:
 
 /a, /add *name* - add a new event
+/c, /chart *name* - disply some chart of event activity in the last 30 days
 /e, /export - get all your data in CSV format
 /h, /help - this help message
 /s, /since *name* - the time since the last event with a given name was logged
@@ -408,6 +507,8 @@ func reply(message *tgbotapi.Message, db *sqlitex.Pool, bot *tgbotapi.BotAPI) {
 		switch command := message.Command(); command {
 		case "a", "add":
 			c.add(message.CommandArguments())
+		case "c", "chart":
+			c.chart(message.CommandArguments())
 		case "e", "export":
 			c.export()
 		case "h", "help":
