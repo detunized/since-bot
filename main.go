@@ -8,6 +8,8 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"runtime/debug"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,6 +20,8 @@ import (
 	"github.com/hako/durafmt"
 	"github.com/wcharczuk/go-chart"
 )
+
+const debugEnabled = true
 
 //
 // Utils
@@ -241,8 +245,8 @@ Available commands are:
 /e, /export - get all your data in CSV format
 /h, /help - this help message
 /s, /since *name* - the time since the last event with a given name was logged
-/t, /top - top 10 events
-/tc, /topchart - chart of top 10 events
+/t, /top *[N]* - top 10 or *N* events
+/tc, /topchart *[N]* - chart 10 or *N* events
 /test - test if the bot works
 `)
 }
@@ -269,12 +273,18 @@ func (c context) test() {
 	c.sendText("It works")
 }
 
-func (c context) top() {
-	response := strings.Builder{}
-	response.WriteString("These are your 10 most logged events:\n```\n")
+func (c context) top(args string) {
+	// Parse the argument, if any
+	num, err := strconv.Atoi(args)
+	if err != nil {
+		num = 10
+	}
 
-	for name, freq := range c.getTopEvents(10) {
-		response.WriteString(fmt.Sprintf("%s: %d\n", name, freq))
+	response := strings.Builder{}
+	response.WriteString(fmt.Sprintf("These are your %d most logged events:\n```\n", num))
+
+	for _, e := range c.getTopEvents(num) {
+		response.WriteString(fmt.Sprintf("%s: %d\n", e.name, e.count))
 	}
 
 	response.WriteString("```\n")
@@ -282,10 +292,16 @@ func (c context) top() {
 	c.sendMarkdown(response.String())
 }
 
-func (c context) topChart() {
+func (c context) topChart(args string) {
+	// Parse the argument, if any
+	num, err := strconv.Atoi(args)
+	if err != nil {
+		num = 10
+	}
+
 	// Convert values
-	values := make([]chart.Value, 0, 10)
-	for _, e := range c.getTopEvents(10) {
+	values := make([]chart.Value, 0, num)
+	for _, e := range c.getTopEvents(num) {
 		values = append(values, chart.Value{Label: e.name, Value: float64(e.count)})
 	}
 
@@ -298,8 +314,9 @@ func (c context) topChart() {
 				Top: 40,
 			},
 		},
+		Width:    num * 100,
 		Height:   512,
-		BarWidth: 60,
+		BarWidth: 80,
 		XAxis:    chart.StyleShow(),
 		YAxis: chart.YAxis{
 			Style:          chart.StyleShow(),
@@ -310,7 +327,10 @@ func (c context) topChart() {
 
 	// Render
 	buffer := &bytes.Buffer{}
-	response.Render(chart.PNG, buffer)
+	err = response.Render(chart.PNG, buffer)
+	if err != nil {
+		log.Panic(err)
+	}
 
 	c.sendImage("chart.png", buffer.Bytes())
 }
@@ -352,6 +372,19 @@ func reply(message *tgbotapi.Message, db *sqlitex.Pool, bot *tgbotapi.BotAPI) {
 	// Store all the variables into the context not to pass around all the arguments everywhere
 	c := context{message: message, db: db, bot: bot}
 
+	// TODO: Should we always recover, not only in debug?
+	if debugEnabled {
+		defer func() {
+			if r := recover(); r != nil {
+				// When we recover from panic, the runtime doesn't print the callstack
+				debug.PrintStack()
+
+				// Send to the curious user as well
+				c.sendMarkdown(fmt.Sprintf("*Internal error:*\n```\n%s\n```\n", r))
+			}
+		}()
+	}
+
 	if message.IsCommand() {
 		switch command := message.Command(); command {
 		case "a", "add":
@@ -363,9 +396,9 @@ func reply(message *tgbotapi.Message, db *sqlitex.Pool, bot *tgbotapi.BotAPI) {
 		case "s", "since":
 			c.since(message.CommandArguments())
 		case "t", "top":
-			c.top()
+			c.top(message.CommandArguments())
 		case "tc", "topchart":
-			c.topChart()
+			c.topChart(message.CommandArguments())
 		case "test":
 			c.test()
 		default:
