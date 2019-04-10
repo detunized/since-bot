@@ -21,7 +21,12 @@ import (
 	"github.com/wcharczuk/go-chart"
 )
 
-const debugEnabled = true
+const (
+	debugEnabled    = true
+	defaultTopCount = 10
+	minTopCount     = 3
+	maxTopCount     = 25
+)
 
 //
 // Utils
@@ -274,11 +279,7 @@ func (c context) test() {
 }
 
 func (c context) top(args string) {
-	// Parse the argument, if any
-	num, err := strconv.Atoi(args)
-	if err != nil {
-		num = 10
-	}
+	num := parseTopArgs(args)
 
 	response := strings.Builder{}
 	response.WriteString(fmt.Sprintf("These are your %d most logged events:\n```\n", num))
@@ -293,11 +294,7 @@ func (c context) top(args string) {
 }
 
 func (c context) topChart(args string) {
-	// Parse the argument, if any
-	num, err := strconv.Atoi(args)
-	if err != nil {
-		num = 10
-	}
+	num := parseTopArgs(args)
 
 	// Convert values
 	values := make([]chart.Value, 0, num)
@@ -327,12 +324,33 @@ func (c context) topChart(args string) {
 
 	// Render
 	buffer := &bytes.Buffer{}
-	err = response.Render(chart.PNG, buffer)
+	err := response.Render(chart.PNG, buffer)
 	if err != nil {
 		log.Panic(err)
 	}
 
 	c.sendImage("chart.png", buffer.Bytes())
+}
+
+func clamp(value, min, max int) int {
+	if value < min {
+		return min
+	}
+
+	if value > max {
+		return max
+	}
+
+	return value
+}
+
+func parseTopArgs(args string) int {
+	num, err := strconv.Atoi(args)
+	if err != nil {
+		return defaultTopCount
+	}
+
+	return clamp(num, minTopCount, maxTopCount)
 }
 
 type topEvent struct {
