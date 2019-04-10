@@ -16,6 +16,7 @@ import (
 	"crawshaw.io/sqlite/sqlitex"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 	"github.com/hako/durafmt"
+	"github.com/wcharczuk/go-chart"
 )
 
 //
@@ -106,6 +107,14 @@ func (c context) sendText(response string) {
 
 func (c context) sendMarkdown(response string) {
 	c.sendResponse(response, "Markdown")
+}
+
+func (c context) sendImage(filename string, content []byte) {
+	image := tgbotapi.FileBytes{Name: filename, Bytes: content}
+	_, err := c.bot.Send(tgbotapi.NewPhotoUpload(c.message.Chat.ID, image))
+	if err != nil {
+		log.Panic(err)
+	}
 }
 
 func (c context) sendFile(filename string, content []byte) {
@@ -233,6 +242,7 @@ Available commands are:
 /h, /help - this help message
 /s, /since *name* - the time since the last event with a given name was logged
 /t, /top - top 10 events
+/tc, /topchart - chart of top 10 events
 /test - test if the bot works
 `)
 }
@@ -260,23 +270,73 @@ func (c context) test() {
 }
 
 func (c context) top() {
+	response := strings.Builder{}
+	response.WriteString("These are your 10 most logged events:\n```\n")
+
+	for name, freq := range c.getTopEvents(10) {
+		response.WriteString(fmt.Sprintf("%s: %d\n", name, freq))
+	}
+
+	response.WriteString("```\n")
+
+	c.sendMarkdown(response.String())
+}
+
+func (c context) topChart() {
+	// Convert values
+	values := make([]chart.Value, 0, 10)
+	for _, e := range c.getTopEvents(10) {
+		values = append(values, chart.Value{Label: e.name, Value: float64(e.count)})
+	}
+
+	// Chart settings
+	response := chart.BarChart{
+		Title:      "Top events",
+		TitleStyle: chart.StyleShow(),
+		Background: chart.Style{
+			Padding: chart.Box{
+				Top: 40,
+			},
+		},
+		Height:   512,
+		BarWidth: 60,
+		XAxis:    chart.StyleShow(),
+		YAxis: chart.YAxis{
+			Style:          chart.StyleShow(),
+			ValueFormatter: chart.IntValueFormatter,
+		},
+		Bars: values,
+	}
+
+	// Render
+	buffer := &bytes.Buffer{}
+	response.Render(chart.PNG, buffer)
+
+	c.sendImage("chart.png", buffer.Bytes())
+}
+
+type topEvent struct {
+	name  string
+	count int64
+}
+
+func (c context) getTopEvents(num int) []topEvent {
 	// DB
 	connection := c.db.Get(nil)
 	defer c.db.Put(connection)
 
-	response := strings.Builder{}
-	response.WriteString("These are your 10 most logged events:\n```\n")
-
-	// This is most likely a rarely used command, so we use a non caching version
+	events := make([]topEvent, 0, num)
 	err := sqlitex.ExecTransient(
 		connection,
-		"SELECT name, COUNT(name) freq FROM events "+
-			"WHERE user = ? "+
-			"GROUP BY name "+
-			"ORDER BY freq DESC "+
-			"LIMIT 10",
+		fmt.Sprintf(
+			"SELECT name, COUNT(name) freq FROM events "+
+				"WHERE user = ? "+
+				"GROUP BY name "+
+				"ORDER BY freq DESC "+
+				"LIMIT %d",
+			num),
 		func(s *sqlite.Stmt) error {
-			response.WriteString(fmt.Sprintf("%s: %d\n", s.GetText("name"), s.GetInt64("freq")))
+			events = append(events, topEvent{name: s.GetText("name"), count: s.GetInt64("freq")})
 			return nil
 		},
 		c.message.From.ID)
@@ -285,9 +345,7 @@ func (c context) top() {
 		log.Panic(err)
 	}
 
-	response.WriteString("```\n")
-
-	c.sendMarkdown(response.String())
+	return events
 }
 
 func reply(message *tgbotapi.Message, db *sqlitex.Pool, bot *tgbotapi.BotAPI) {
@@ -306,6 +364,8 @@ func reply(message *tgbotapi.Message, db *sqlitex.Pool, bot *tgbotapi.BotAPI) {
 			c.since(message.CommandArguments())
 		case "t", "top":
 			c.top()
+		case "tc", "topchart":
+			c.topChart()
 		case "test":
 			c.test()
 		default:
