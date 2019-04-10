@@ -140,6 +140,18 @@ func (c context) sendFile(filename string, content []byte) {
 	}
 }
 
+func (c context) sendChart(ch chart.BarChart) {
+	// Render
+	buffer := &bytes.Buffer{}
+	err := ch.Render(chart.PNG, buffer)
+	if err != nil {
+		log.Panic(err)
+	}
+
+	// Send as photo
+	c.sendImage("chart.png", buffer.Bytes())
+}
+
 func (c context) sendKeyboard(text string, names ...string) {
 	log.Printf("Sending a keyboard %v to '%s'", names, c.message.From)
 
@@ -291,15 +303,7 @@ func (c context) chart(name string) {
 		Bars: values,
 	}
 
-	// TODO: make a function sendChart
-	// Render
-	buffer := &bytes.Buffer{}
-	err = response.Render(chart.PNG, buffer)
-	if err != nil {
-		log.Panic(err)
-	}
-
-	c.sendImage("chart.png", buffer.Bytes())
+	c.sendChart(response)
 }
 
 func (c context) export() {
@@ -422,14 +426,7 @@ func (c context) topChart(args string) {
 		Bars: values,
 	}
 
-	// Render
-	buffer := &bytes.Buffer{}
-	err := response.Render(chart.PNG, buffer)
-	if err != nil {
-		log.Panic(err)
-	}
-
-	c.sendImage("chart.png", buffer.Bytes())
+	c.sendChart(response)
 }
 
 func clamp(value, min, max int) int {
