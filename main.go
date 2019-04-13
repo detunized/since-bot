@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"os"
@@ -21,10 +22,12 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 	"github.com/hako/durafmt"
 	"github.com/wcharczuk/go-chart"
+	"github.com/wcharczuk/go-chart/drawing"
 )
 
 const (
 	defaultMonthChartDays = 30
+	defaultYearChartWeeks = 52
 
 	defaultTopCount = 10
 	minTopCount     = 3
@@ -36,7 +39,7 @@ const (
 //
 
 const (
-	debugSendPanicToChat = true
+	debugSendPanicToChat = false
 	debugChartFilename   = "debug.png"
 )
 
@@ -186,7 +189,12 @@ func (c context) sendFile(filename string, content []byte) {
 	}
 }
 
-func (c context) sendChart(ch chart.BarChart) {
+// This interface unites all the charts
+type renderableChart interface {
+	Render(rp chart.RendererProvider, w io.Writer) error
+}
+
+func (c context) sendChart(ch renderableChart) {
 	// Render
 	buffer := &bytes.Buffer{}
 	err := ch.Render(chart.PNG, buffer)
@@ -492,6 +500,113 @@ func (c context) topChart(args string) {
 	c.sendChart(response)
 }
 
+func (c context) year(name string) {
+	if name == "" {
+		c.sendMarkdown("Please provide a name: /year *name*")
+		return
+	}
+
+	// DB
+	connection := c.db.Get(nil)
+	defer c.db.Put(connection)
+
+	numWeeks := defaultYearChartWeeks
+	numDays := numWeeks * 7
+	now := int64(c.message.Date)
+	days := make([]int64, numDays)
+
+	done := errors.New("Done")
+	err := sqlitex.Exec(
+		connection,
+		"SELECT date FROM events "+
+			"WHERE user = ? AND name = ? "+
+			"ORDER BY date DESC",
+		func(s *sqlite.Stmt) error {
+			date := s.GetInt64("date")
+
+			daysAgo := int((now - date) / (24 * 60 * 60))
+			if daysAgo < 0 {
+				daysAgo = 0
+			}
+
+			if daysAgo >= numDays {
+				return done
+			}
+
+			days[daysAgo]++
+
+			return nil
+		},
+		c.message.From.ID,
+		name)
+
+	if err != nil && err != done {
+		log.Panic(err)
+	}
+
+	maxValue := int64(-1)
+	for _, numEvents := range days {
+		if numEvents > maxValue {
+			maxValue = numEvents
+		}
+	}
+
+	bars := make([]chart.StackedBar, numWeeks)
+	for i, numEvents := range days {
+		week := numWeeks - i/7 - 1 // Reverse the week order
+		day := i % 7
+		if day == 0 {
+			bars[week] = chart.StackedBar{Width: 20, Values: make([]chart.Value, 7)}
+		}
+
+		colors := []drawing.Color{
+			drawing.ColorFromHex("196127"),
+			drawing.ColorFromHex("c6e48b"),
+			drawing.ColorFromHex("7bc96f"),
+			drawing.ColorFromHex("239a3b"),
+		}
+
+		color := drawing.ColorFromHex("ebedf0")
+		if numEvents > 0 {
+			n := (numEvents - 1) * int64(len(colors)) / maxValue
+			color = colors[n]
+		}
+
+		bars[week].Values[day] = chart.Value{
+			Value: 1,
+			Style: chart.Style{
+				Show:        true,
+				StrokeWidth: 1,
+				StrokeColor: color,
+				FillColor:   color,
+			},
+		}
+	}
+
+	// Chart settings
+	response := chart.StackedBarChart{
+		Title:      fmt.Sprintf("Activity for '%s' in the last year", name),
+		TitleStyle: chart.StyleShow(),
+		Background: chart.Style{
+			Padding: chart.Box{
+				Top: 50,
+			},
+		},
+		Width:      numWeeks*21 + 80,
+		Height:     256,
+		BarSpacing: 1,
+		XAxis:      chart.StyleShow(),
+		YAxis:      chart.StyleShow(),
+		Bars:       bars,
+	}
+
+	c.sendChart(response)
+}
+
+//
+// Command utils
+//
+
 func clamp(value, min, max int) int {
 	if value < min {
 		return min
@@ -575,12 +690,14 @@ func reply(message *tgbotapi.Message, db *sqlitex.Pool, bot *tgbotapi.BotAPI) {
 			c.month(message.CommandArguments())
 		case "s", "since":
 			c.since(message.CommandArguments())
+		case "test":
+			c.test()
 		case "t", "top":
 			c.top(message.CommandArguments())
 		case "tc", "topchart":
 			c.topChart(message.CommandArguments())
-		case "test":
-			c.test()
+		case "y", "year":
+			c.year(message.CommandArguments())
 		default:
 			c.sendText(fmt.Sprintf("Eh? /%s?", command))
 		}
@@ -629,7 +746,7 @@ func main() {
 				From: &tgbotapi.User{ID: 37121672},
 			},
 		}
-		c.month("yo")
+		c.year("commit")
 		return
 	}
 
