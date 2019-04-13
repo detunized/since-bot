@@ -24,7 +24,7 @@ import (
 )
 
 const (
-	defaultChartDays = 30
+	defaultMonthChartDays = 30
 
 	defaultTopCount = 10
 	minTopCount     = 3
@@ -276,9 +276,62 @@ func (c context) add(text string) {
 	}
 }
 
-func (c context) chart(name string) {
+func (c context) export() {
+	// DB
+	connection := c.db.Get(nil)
+	defer c.db.Put(connection)
+
+	// CSV writer
+	buffer := &bytes.Buffer{}
+	csv := csv.NewWriter(buffer)
+
+	// This is most likely a rarely used command, so we use a non caching version
+	err := sqlitex.ExecTransient(
+		connection,
+		"SELECT name, date FROM events WHERE user = ? ORDER BY date",
+		func(s *sqlite.Stmt) error {
+			err := csv.Write([]string{
+				s.GetText("name"),
+				time.Unix(s.GetInt64("date"), 0).Format(time.RFC3339),
+			})
+			if err != nil {
+				log.Panic(err)
+			}
+			return nil
+		},
+		c.message.From.ID)
+
+	if err != nil {
+		log.Panic(err)
+	}
+
+	// Never forget to flush when you're done
+	csv.Flush()
+
+	// There you go
+	c.sendFile("data.csv", buffer.Bytes())
+}
+
+func (c context) help() {
+	c.sendMarkdown(`
+Simply send an event name to log a new event. This is equivalent to the /add command.
+
+Available commands are:
+
+/a, /add *name* - add a new event
+/e, /export - get all your data in CSV format
+/h, /help - this help message
+/m, /month *name* - disply some chart of event activity in the last month
+/s, /since *name* - the time since the last event with a given name was logged
+/t, /top *[N]* - top 10 or *N* events
+/tc, /topchart *[N]* - chart 10 or *N* events
+/test - test if the bot works
+`)
+}
+
+func (c context) month(name string) {
 	if name == "" {
-		c.sendMarkdown("Please provide a name: /chart *name*")
+		c.sendMarkdown("Please provide a name: /month *name*")
 		return
 	}
 
@@ -286,7 +339,7 @@ func (c context) chart(name string) {
 	connection := c.db.Get(nil)
 	defer c.db.Put(connection)
 
-	numDays := defaultChartDays
+	numDays := defaultMonthChartDays
 	now := int64(c.message.Date)
 	days := make([]int64, numDays)
 
@@ -367,59 +420,6 @@ func (c context) chart(name string) {
 	}
 
 	c.sendChart(response)
-}
-
-func (c context) export() {
-	// DB
-	connection := c.db.Get(nil)
-	defer c.db.Put(connection)
-
-	// CSV writer
-	buffer := &bytes.Buffer{}
-	csv := csv.NewWriter(buffer)
-
-	// This is most likely a rarely used command, so we use a non caching version
-	err := sqlitex.ExecTransient(
-		connection,
-		"SELECT name, date FROM events WHERE user = ? ORDER BY date",
-		func(s *sqlite.Stmt) error {
-			err := csv.Write([]string{
-				s.GetText("name"),
-				time.Unix(s.GetInt64("date"), 0).Format(time.RFC3339),
-			})
-			if err != nil {
-				log.Panic(err)
-			}
-			return nil
-		},
-		c.message.From.ID)
-
-	if err != nil {
-		log.Panic(err)
-	}
-
-	// Never forget to flush when you're done
-	csv.Flush()
-
-	// There you go
-	c.sendFile("data.csv", buffer.Bytes())
-}
-
-func (c context) help() {
-	c.sendMarkdown(`
-Simply send an event name to log a new event. This is equivalent to the /add command.
-
-Available commands are:
-
-/a, /add *name* - add a new event
-/c, /chart *name* - disply some chart of event activity in the last 30 days
-/e, /export - get all your data in CSV format
-/h, /help - this help message
-/s, /since *name* - the time since the last event with a given name was logged
-/t, /top *[N]* - top 10 or *N* events
-/tc, /topchart *[N]* - chart 10 or *N* events
-/test - test if the bot works
-`)
 }
 
 func (c context) since(name string) {
@@ -567,12 +567,12 @@ func reply(message *tgbotapi.Message, db *sqlitex.Pool, bot *tgbotapi.BotAPI) {
 		switch command := message.Command(); command {
 		case "a", "add":
 			c.add(message.CommandArguments())
-		case "c", "chart":
-			c.chart(message.CommandArguments())
 		case "e", "export":
 			c.export()
 		case "h", "help":
 			c.help()
+		case "m", "month":
+			c.month(message.CommandArguments())
 		case "s", "since":
 			c.since(message.CommandArguments())
 		case "t", "top":
@@ -629,7 +629,7 @@ func main() {
 				From: &tgbotapi.User{ID: 37121672},
 			},
 		}
-		c.chart("yo")
+		c.month("yo")
 		return
 	}
 
