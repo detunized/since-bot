@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/csv"
 	"encoding/json"
 	"errors"
@@ -31,6 +32,33 @@ const (
 	minTopCount     = 3
 	maxTopCount     = 25
 )
+
+//
+// Debug
+//
+
+const debugChartFilename = "debug.png"
+
+// When `debugChartEnabled` is true, the chars are rendered to the local `debug.png`
+// and the process exits. See `make debug-chart`.
+var debugChartEnabled = os.Getenv("SINCE_BOT_DEBUG_CHART") == "1"
+
+func savePng(content []byte) {
+	if err := ioutil.WriteFile(debugChartFilename, content, 0644); err != nil {
+		log.Panic(err)
+	}
+}
+
+func saveRedPng() {
+	// Red PNG 100x100
+	pngB64 := "iVBORw0KGgoAAAANSUhEUgAAAGQAAABkCAYAAABw4pVUAAAApElEQVR42u3R" +
+		"AQ0AAAjDMO5fNCCDkC5z0HTVrisFCBABASIgQAQEiIAAAQJEQIAICBABASIgQAREQI" +
+		"AICBABASIgQAREQIAICBABASIgQAREQIAICBABASIgQAREQIAICBABASIgQAREQIAI" +
+		"CBABASIgQAREQIAICBABASIgQAREQIAICBABASIgQAREQIAICBABASIgQAQECBAgAg" +
+		"JEQIAIyPcGFY7HnV2aPXoAAAAASUVORK5CYII="
+	pngBin, _ := base64.StdEncoding.DecodeString(pngB64)
+	savePng(pngBin)
+}
 
 //
 // Utils
@@ -105,6 +133,11 @@ type context struct {
 func (c context) sendResponse(response string, format string) {
 	log.Printf("Responding to '%s' in '%s' with '%s'", c.message.From, format, response)
 
+	if debugChartEnabled {
+		saveRedPng()
+		return
+	}
+
 	message := tgbotapi.NewMessage(c.message.Chat.ID, response)
 	message.ParseMode = format
 
@@ -123,6 +156,13 @@ func (c context) sendMarkdown(response string) {
 }
 
 func (c context) sendImage(filename string, content []byte) {
+	log.Printf("Sending an image named '%s' to '%s'", filename, c.message.From)
+
+	if debugChartEnabled {
+		saveRedPng()
+		return
+	}
+
 	image := tgbotapi.FileBytes{Name: filename, Bytes: content}
 	_, err := c.bot.Send(tgbotapi.NewPhotoUpload(c.message.Chat.ID, image))
 	if err != nil {
@@ -131,7 +171,12 @@ func (c context) sendImage(filename string, content []byte) {
 }
 
 func (c context) sendFile(filename string, content []byte) {
-	log.Printf("Sending a file names '%s' to '%s'", filename, c.message.From)
+	log.Printf("Sending a file named '%s' to '%s'", filename, c.message.From)
+
+	if debugChartEnabled {
+		saveRedPng()
+		return
+	}
 
 	file := tgbotapi.FileBytes{Name: filename, Bytes: content}
 	_, err := c.bot.Send(tgbotapi.NewDocumentUpload(c.message.Chat.ID, file))
@@ -148,12 +193,22 @@ func (c context) sendChart(ch chart.BarChart) {
 		log.Panic(err)
 	}
 
-	// Send as photo
-	c.sendImage("chart.png", buffer.Bytes())
+	if debugChartEnabled {
+		// Save locally
+		savePng(buffer.Bytes())
+	} else {
+		// Send as photo
+		c.sendImage("chart.png", buffer.Bytes())
+	}
 }
 
 func (c context) sendKeyboard(text string, names ...string) {
 	log.Printf("Sending a keyboard %v to '%s'", names, c.message.From)
+
+	if debugChartEnabled {
+		saveRedPng()
+		return
+	}
 
 	var markup interface{}
 	if len(names) > 0 {
@@ -263,8 +318,19 @@ func (c context) chart(name string) {
 		log.Panic(err)
 	}
 
-	values := make([]chart.Value, len(days))
 	maxValue := int64(-1)
+	for _, day := range days {
+		if day > maxValue {
+			maxValue = day
+		}
+	}
+
+	if maxValue <= 0 {
+		c.sendMarkdown(fmt.Sprintf("No events named '%s' have been logged in the last %d days", name, numDays))
+		return
+	}
+
+	values := make([]chart.Value, len(days))
 	for i, day := range days {
 		values[len(days)-i-1] = chart.Value{
 			Value: float64(day),
@@ -274,10 +340,6 @@ func (c context) chart(name string) {
 				StrokeColor: chart.ColorAlternateGreen,
 				FillColor:   chart.ColorAlternateGreen,
 			},
-		}
-
-		if day > maxValue {
-			maxValue = day
 		}
 	}
 
@@ -557,6 +619,18 @@ func main() {
 
 	db := openDB()
 	defer db.Close()
+
+	if debugChartEnabled {
+		c := context{
+			db: db,
+			message: &tgbotapi.Message{
+				Date: int(time.Now().Unix()),
+				From: &tgbotapi.User{ID: 37121672},
+			},
+		}
+		c.chart("yo")
+		return
+	}
 
 	bot, err := tgbotapi.NewBotAPI(config.Token)
 	if err != nil {
