@@ -24,8 +24,6 @@ import (
 )
 
 const (
-	debugEnabled = true
-
 	defaultChartDays = 30
 
 	defaultTopCount = 10
@@ -37,7 +35,10 @@ const (
 // Debug
 //
 
-const debugChartFilename = "debug.png"
+const (
+	debugSendPanicToChat = true
+	debugChartFilename   = "debug.png"
+)
 
 // When `debugChartEnabled` is true, the chars are rendered to the local `debug.png`
 // and the process exits. See `make debug-chart`.
@@ -550,7 +551,7 @@ func reply(message *tgbotapi.Message, db *sqlitex.Pool, bot *tgbotapi.BotAPI) {
 	c := context{message: message, db: db, bot: bot}
 
 	// TODO: Should we always recover, not only in debug?
-	if debugEnabled {
+	if debugSendPanicToChat {
 		defer func() {
 			if r := recover(); r != nil {
 				// When we recover from panic, the runtime doesn't print the callstack
