@@ -22,7 +22,6 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 	"github.com/hako/durafmt"
 	"github.com/wcharczuk/go-chart"
-	"github.com/wcharczuk/go-chart/drawing"
 )
 
 const (
@@ -513,7 +512,7 @@ func (c context) year(name string) {
 	numWeeks := defaultYearChartWeeks
 	numDays := numWeeks * 7
 	now := int64(c.message.Date)
-	days := make([]int64, numDays)
+	days := make([]int, numDays)
 
 	done := errors.New("Done")
 	err := sqlitex.Exec(
@@ -544,61 +543,8 @@ func (c context) year(name string) {
 		log.Panic(err)
 	}
 
-	maxValue := int64(-1)
-	for _, numEvents := range days {
-		if numEvents > maxValue {
-			maxValue = numEvents
-		}
-	}
-
-	bars := make([]chart.StackedBar, numWeeks)
-	for i, numEvents := range days {
-		week := numWeeks - i/7 - 1 // Reverse the week order
-		day := i % 7
-		if day == 0 {
-			bars[week] = chart.StackedBar{Width: 20, Values: make([]chart.Value, 7)}
-		}
-
-		colors := []drawing.Color{
-			drawing.ColorFromHex("196127"),
-			drawing.ColorFromHex("c6e48b"),
-			drawing.ColorFromHex("7bc96f"),
-			drawing.ColorFromHex("239a3b"),
-		}
-
-		color := drawing.ColorFromHex("ebedf0")
-		if numEvents > 0 {
-			n := (numEvents - 1) * int64(len(colors)) / maxValue
-			color = colors[n]
-		}
-
-		bars[week].Values[day] = chart.Value{
-			Value: 1,
-			Style: chart.Style{
-				Show:        true,
-				StrokeWidth: 1,
-				StrokeColor: color,
-				FillColor:   color,
-			},
-		}
-	}
-
 	// Chart settings
-	response := chart.StackedBarChart{
-		Title:      fmt.Sprintf("Activity for '%s' in the last year", name),
-		TitleStyle: chart.StyleShow(),
-		Background: chart.Style{
-			Padding: chart.Box{
-				Top: 50,
-			},
-		},
-		Width:      numWeeks*21 + 80,
-		Height:     256,
-		BarSpacing: 1,
-		XAxis:      chart.StyleShow(),
-		YAxis:      chart.StyleShow(),
-		Bars:       bars,
-	}
+	response := ActivityChart{Days: days}
 
 	c.sendChart(response)
 }
