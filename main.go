@@ -544,7 +544,7 @@ func (c context) year(name string) {
 	}
 
 	// Chart settings
-	response := ActivityChart{Days: days}
+	response := ActivityChart{Days: days, CurrentDay: 2}
 
 	c.sendChart(response)
 }

@@ -44,7 +44,8 @@ type ActivityChart struct {
 	XAxis chart.Style
 	YAxis chart.Style
 
-	Days []int
+	Days       []int
+	CurrentDay int // 0-6
 
 	// Layout info and other cached valued (all updated in `layout()`)
 	titleX      int
@@ -124,6 +125,10 @@ func (ac ActivityChart) Render(rp chart.RendererProvider, w io.Writer) error {
 		return errors.New("Please provide at least one day of activity")
 	}
 
+	if ac.CurrentDay < 0 || ac.CurrentDay >= daysPerWeek {
+		return fmt.Errorf("CurrentDay must be in [0, %d] range", daysPerWeek-1)
+	}
+
 	// Set the chart default font
 	if ac.Font == nil {
 		defaultFont, err := chart.GetDefaultFont()
@@ -164,7 +169,7 @@ func (ac *ActivityChart) layout(r chart.Renderer) {
 	ac.titleX = (ac.GetWidth() - titleBox.Width()) / 2
 	ac.titleY = ac.TitleStyle.Padding.GetTop(chart.DefaultTitleTop) + titleBox.Height()
 
-	ac.numWeeks = (len(ac.Days) + daysPerWeek - 1) / daysPerWeek
+	ac.numWeeks = (len(ac.Days) + ac.CurrentDay + daysPerWeek - 1) / daysPerWeek
 	ac.chartWidth = ac.getChartAreaDim(ac.numWeeks)
 	ac.chartHeight = ac.getChartAreaDim(daysPerWeek)
 
@@ -225,8 +230,9 @@ func (ac ActivityChart) drawDots(r chart.Renderer) {
 	spacing := ac.GetDotSpacing()
 
 	for i, value := range ac.Days {
-		week := i / daysPerWeek
-		day := i % daysPerWeek
+		offset := i + ac.CurrentDay
+		week := offset / daysPerWeek
+		day := offset % daysPerWeek
 
 		x := ac.chartX + week*(size+spacing)
 		y := ac.chartY + day*(size+spacing)
