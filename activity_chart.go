@@ -7,10 +7,19 @@ import (
 
 	"github.com/golang/freetype/truetype"
 	"github.com/wcharczuk/go-chart"
+	"github.com/wcharczuk/go-chart/drawing"
 	"github.com/wcharczuk/go-chart/util"
 )
 
 const daysPerWeek = 7
+
+var activityChartDefaultColors = []drawing.Color{
+	drawing.ColorFromHex("ebedf0"),
+	drawing.ColorFromHex("c6e48b"),
+	drawing.ColorFromHex("7bc96f"),
+	drawing.ColorFromHex("239a3b"),
+	drawing.ColorFromHex("196127"),
+}
 
 // ActivityChart draws a daily activity chart for one year
 type ActivityChart struct {
@@ -37,7 +46,7 @@ type ActivityChart struct {
 
 	Days []int
 
-	// Layout info
+	// Layout info and other cached valued (all updated in `layout()`)
 	titleX      int
 	titleY      int
 	chartX      int
@@ -45,6 +54,7 @@ type ActivityChart struct {
 	chartWidth  int
 	chartHeight int
 	numWeeks    int
+	maxValue    int
 }
 
 // GetColorPalette returns the color palette for the chart.
@@ -160,6 +170,14 @@ func (ac *ActivityChart) layout(r chart.Renderer) {
 
 	ac.chartX = (ac.GetWidth() - ac.chartWidth) / 2
 	ac.chartY = (ac.GetHeight() - ac.titleY - ac.chartHeight) / 2
+
+	// Find max
+	ac.maxValue = -1
+	for _, value := range ac.Days {
+		if value > ac.maxValue {
+			ac.maxValue = value
+		}
+	}
 }
 
 func (ac ActivityChart) drawBackground(r chart.Renderer) {
@@ -236,8 +254,17 @@ func (ac ActivityChart) getChartAreaDim(numDots int) int {
 
 func (ac ActivityChart) getDotStyle(value int) chart.Style {
 	return chart.Style{
-		FillColor:   ac.GetColorPalette().GetSeriesColor(value),
-		StrokeColor: ac.GetColorPalette().GetSeriesColor(value),
+		FillColor:   ac.getDotColor(value),
+		StrokeColor: ac.getDotColor(value),
 		StrokeWidth: chart.DefaultStrokeWidth,
 	}
+}
+
+func (ac ActivityChart) getDotColor(value int) drawing.Color {
+	if value == 0 {
+		return activityChartDefaultColors[0]
+	}
+
+	numColors := len(activityChartDefaultColors) - 1
+	return activityChartDefaultColors[(value-1)*numColors/ac.maxValue+1]
 }
