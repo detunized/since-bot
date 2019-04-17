@@ -100,7 +100,7 @@ func (ac ActivityChart) GetDotSize() int {
 // GetDotSpacing returns the chart dot spacing or the default value
 func (ac ActivityChart) GetDotSpacing() int {
 	if ac.DotSpacing == 0 {
-		return 1
+		return 2
 	}
 	return ac.DotSpacing
 }
@@ -221,12 +221,6 @@ func (ac ActivityChart) getTitleFontSize() float64 {
 }
 
 func (ac ActivityChart) drawDots(r chart.Renderer) {
-	// TODO: Don't always start on Monday, pick the correct day
-	const daysPerWeek = 7
-	//numWeeks := (len(ac.Days) + daysPerWeek - 1) / daysPerWeek
-
-	//width := ac.getChartAreaDim(numWeeks)
-	//height := ac.getChartAreaDim(daysPerWeek)
 	size := ac.GetDotSize()
 	spacing := ac.GetDotSpacing()
 
