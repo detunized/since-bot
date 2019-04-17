@@ -21,6 +21,8 @@ var activityChartDefaultColors = []drawing.Color{
 	drawing.ColorFromHex("196127"),
 }
 
+var activityChartDayLabels = []string{"Mon", "", "Wed", "", "Fri", "", "Sun"}
+
 // ActivityChart draws a daily activity chart for one year
 type ActivityChart struct {
 	Title      string
@@ -76,7 +78,7 @@ func (ac ActivityChart) GetWidth() int {
 
 // GetHeight returns the chart height or the default value
 func (ac ActivityChart) GetHeight() int {
-	if ac.Width == 0 {
+	if ac.Height == 0 {
 		return chart.DefaultChartHeight
 	}
 	return ac.Height
@@ -156,6 +158,7 @@ func (ac ActivityChart) Render(rp chart.RendererProvider, w io.Writer) error {
 	ac.drawBackground(r)
 	ac.drawTitle(r)
 	ac.drawDots(r)
+	ac.drawYAxis(r)
 
 	return r.Save(w)
 }
@@ -198,6 +201,18 @@ func (ac ActivityChart) styleDefaultsBackground() chart.Style {
 		FillColor:   ac.GetColorPalette().BackgroundColor(),
 		StrokeColor: ac.GetColorPalette().BackgroundStrokeColor(),
 		StrokeWidth: chart.DefaultStrokeWidth,
+	}
+}
+
+func (ac ActivityChart) styleDefaultsAxes() chart.Style {
+	return chart.Style{
+		StrokeColor:         ac.GetColorPalette().AxisStrokeColor(),
+		Font:                ac.GetFont(),
+		FontSize:            chart.DefaultAxisFontSize,
+		FontColor:           ac.GetColorPalette().TextColor(),
+		TextHorizontalAlign: chart.TextHorizontalAlignCenter,
+		TextVerticalAlign:   chart.TextVerticalAlignTop,
+		TextWrap:            chart.TextWrapWord,
 	}
 }
 
@@ -245,6 +260,44 @@ func (ac ActivityChart) drawDots(r chart.Renderer) {
 		}
 
 		chart.Draw.Box(r, box, ac.getDotStyle(value))
+	}
+}
+
+func (ac ActivityChart) drawYAxis(r chart.Renderer) {
+	if !ac.YAxis.Show {
+		return
+	}
+
+	style := ac.YAxis.InheritFrom(ac.styleDefaultsAxes())
+	style.GetTextOptions().WriteToRenderer(r)
+
+	dotSize := ac.GetDotSize()
+	dotSpacing := ac.GetDotSpacing()
+
+	boxes := make([]chart.Box, len(activityChartDayLabels))
+	for i, label := range activityChartDayLabels {
+		boxes[i] = r.MeasureText(label)
+	}
+
+	maxWidth := 0
+	for _, box := range boxes {
+		w := box.Width()
+		if w > maxWidth {
+			maxWidth = w
+		}
+	}
+
+	for i, label := range activityChartDayLabels {
+		if len(label) == 0 {
+			continue
+		}
+
+		text := fmt.Sprintf("%s %v", label, boxes[i])
+		text = label
+
+		x := ac.chartX - maxWidth - 5
+		y := ac.chartY + (dotSize+dotSpacing)*i + boxes[i].Height()
+		chart.Draw.Text(r, text, x, y, style)
 	}
 }
 

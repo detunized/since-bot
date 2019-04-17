@@ -544,7 +544,12 @@ func (c context) year(name string) {
 	}
 
 	// Chart settings
-	response := ActivityChart{Days: days, CurrentDay: 2}
+	response := ActivityChart{
+		Width:      1200,
+		YAxis:      chart.StyleShow(),
+		Days:       days,
+		CurrentDay: 2,
+	}
 
 	c.sendChart(response)
 }
@@ -693,6 +698,7 @@ func main() {
 			},
 		}
 		c.year("commit")
+		//c.topChart("")
 		return
 	}
 
