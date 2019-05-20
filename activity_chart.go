@@ -49,7 +49,7 @@ type ActivityChart struct {
 
 	Days        []int
 	CurrentDay  int // 0-6
-	LeftToRight bool
+	RightToLeft bool
 
 	// Layout info and other cached valued (all updated in `layout()`)
 	titleX      int
@@ -253,7 +253,7 @@ func (ac ActivityChart) drawDots(r chart.Renderer) {
 		day := offset % daysPerWeek
 
 		// Flip the week when right-to-left
-		if !ac.LeftToRight {
+		if ac.RightToLeft {
 			week = ac.numWeeks - 1 - week
 		}
 
@@ -297,10 +297,16 @@ func (ac ActivityChart) drawXAxis(r chart.Renderer) {
 	x := ac.chartX
 	y := ac.chartY - 10 // + maxHeight
 
-	for i, label := range activityChartMonthLabels {
+	for i := range activityChartMonthLabels {
+		index := i
+		if ac.RightToLeft {
+			index = n - 1 - index
+		}
+
+		label := activityChartMonthLabels[index]
 		chart.Draw.Text(r, label, x, y, style)
 
-		x += boxes[i].Width() + labelGap
+		x += boxes[index].Width() + labelGap
 	}
 }
 

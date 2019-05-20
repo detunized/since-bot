@@ -545,11 +545,12 @@ func (c context) year(name string) {
 
 	// Chart settings
 	response := ActivityChart{
-		Width:      1200,
-		XAxis:      chart.StyleShow(),
-		YAxis:      chart.StyleShow(),
-		Days:       days,
-		CurrentDay: 2,
+		Width:       1200,
+		XAxis:       chart.StyleShow(),
+		YAxis:       chart.StyleShow(),
+		Days:        days,
+		CurrentDay:  2,
+		RightToLeft: true,
 	}
 
 	c.sendChart(response)
