@@ -549,8 +549,8 @@ func (c context) year(name string) {
 		XAxis:        chart.StyleShow(),
 		YAxis:        chart.StyleShow(),
 		Days:         days,
-		CurrentDay:   2,
-		CurrentMonth: 3,
+		CurrentDay:   2, // TODO: use the current date
+		CurrentMonth: 4, // TODO: use the current date
 		RightToLeft:  true,
 	}
 

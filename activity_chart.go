@@ -286,29 +286,28 @@ func (ac ActivityChart) drawXAxis(r chart.Renderer) {
 	width := dotSize*ac.numWeeks + dotSpacing*(ac.numWeeks-1)
 
 	n := len(activityChartMonthLabels)
-	boxes := measureStrings(r, activityChartMonthLabels)
+	labels := make([]string, n+1)
+
+	for i := range labels {
+		index := (i + ac.CurrentMonth) % n
+		labels[i] = activityChartMonthLabels[index]
+	}
+
+	boxes := measureStrings(r, labels)
 
 	totalLabelWidth := 0
 	for _, box := range boxes {
 		totalLabelWidth += box.Width()
 	}
 
-	labelGap := (width - totalLabelWidth) / (n - 1)
+	labelGap := (width - totalLabelWidth) / n
 
 	x := ac.chartX
-	y := ac.chartY - 10 // + maxHeight
+	y := ac.chartY - 10
 
-	for i := range activityChartMonthLabels {
-		index := i
-		if ac.RightToLeft {
-			index = n - 1 - index
-		}
-		index = (index + ac.CurrentMonth) % n
-
-		label := activityChartMonthLabels[index]
+	for i, label := range labels {
 		chart.Draw.Text(r, label, x, y, style)
-
-		x += boxes[index].Width() + labelGap
+		x += boxes[i].Width() + labelGap
 	}
 }
 
