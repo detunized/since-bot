@@ -543,14 +543,16 @@ func (c context) year(name string) {
 		log.Panic(err)
 	}
 
+	today := time.Unix(now, 0)
+
 	// Chart settings
 	response := ActivityChart{
 		Width:        1200,
 		XAxis:        chart.StyleShow(),
 		YAxis:        chart.StyleShow(),
 		Days:         days,
-		CurrentDay:   2, // TODO: use the current date
-		CurrentMonth: 4, // TODO: use the current date
+		CurrentDay:   (int(today.Weekday()) - 1 + 7) % 7, // Weekday return 0 for Sunday
+		CurrentMonth: int(today.Month()) - 1,             // Month is 1 based
 		RightToLeft:  true,
 	}
 
