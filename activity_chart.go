@@ -22,6 +22,7 @@ var activityChartDefaultColors = []drawing.Color{
 }
 
 var activityChartDayLabels = []string{"Mon", "", "Wed", "", "Fri", "", "Sun"}
+var activityChartMonthLabels = []string{"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"}
 
 // ActivityChart draws a daily activity chart for one year
 type ActivityChart struct {
@@ -158,6 +159,7 @@ func (ac ActivityChart) Render(rp chart.RendererProvider, w io.Writer) error {
 	ac.drawBackground(r)
 	ac.drawTitle(r)
 	ac.drawDots(r)
+	ac.drawXAxis(r)
 	ac.drawYAxis(r)
 
 	return r.Save(w)
@@ -263,6 +265,39 @@ func (ac ActivityChart) drawDots(r chart.Renderer) {
 	}
 }
 
+func (ac ActivityChart) drawXAxis(r chart.Renderer) {
+	if !ac.XAxis.Show {
+		return
+	}
+
+	style := ac.YAxis.InheritFrom(ac.styleDefaultsAxes())
+	style.GetTextOptions().WriteToRenderer(r)
+
+	dotSize := ac.GetDotSize()
+	dotSpacing := ac.GetDotSpacing()
+
+	width := dotSize*ac.numWeeks + dotSpacing*(ac.numWeeks-1)
+
+	n := len(activityChartMonthLabels)
+	boxes := measureStrings(r, activityChartMonthLabels)
+
+	totalLabelWidth := 0
+	for _, box := range boxes {
+		totalLabelWidth += box.Width()
+	}
+
+	labelGap := (width - totalLabelWidth) / (n - 1)
+
+	x := ac.chartX
+	y := ac.chartY - 10 // + maxHeight
+
+	for i, label := range activityChartMonthLabels {
+		chart.Draw.Text(r, label, x, y, style)
+
+		x += boxes[i].Width() + labelGap
+	}
+}
+
 func (ac ActivityChart) drawYAxis(r chart.Renderer) {
 	if !ac.YAxis.Show {
 		return
@@ -274,18 +309,8 @@ func (ac ActivityChart) drawYAxis(r chart.Renderer) {
 	dotSize := ac.GetDotSize()
 	dotSpacing := ac.GetDotSpacing()
 
-	boxes := make([]chart.Box, len(activityChartDayLabels))
-	for i, label := range activityChartDayLabels {
-		boxes[i] = r.MeasureText(label)
-	}
-
-	maxWidth := 0
-	for _, box := range boxes {
-		w := box.Width()
-		if w > maxWidth {
-			maxWidth = w
-		}
-	}
+	boxes := measureStrings(r, activityChartDayLabels)
+	maxWidth, _ := getMaxWidthHeight(boxes)
 
 	for i, label := range activityChartDayLabels {
 		if len(label) == 0 {
@@ -320,4 +345,24 @@ func (ac ActivityChart) getDotColor(value int) drawing.Color {
 
 	numColors := len(activityChartDefaultColors) - 1
 	return activityChartDefaultColors[(value-1)*numColors/ac.maxValue+1]
+}
+
+func measureStrings(r chart.Renderer, strs []string) []chart.Box {
+	boxes := make([]chart.Box, len(strs))
+	for i, s := range strs {
+		boxes[i] = r.MeasureText(s)
+	}
+
+	return boxes
+}
+
+func getMaxWidthHeight(boxes []chart.Box) (int, int) {
+	w := 0
+	h := 0
+	for _, box := range boxes {
+		w = util.Math.MaxInt(w, box.Width())
+		h = util.Math.MaxInt(h, box.Height())
+	}
+
+	return w, h
 }
