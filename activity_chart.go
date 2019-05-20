@@ -47,9 +47,10 @@ type ActivityChart struct {
 	XAxis chart.Style
 	YAxis chart.Style
 
-	Days        []int
-	CurrentDay  int // 0-6
-	RightToLeft bool
+	Days         []int
+	CurrentDay   int // 0-6
+	CurrentMonth int // 0-11
+	RightToLeft  bool
 
 	// Layout info and other cached valued (all updated in `layout()`)
 	titleX      int
@@ -302,6 +303,7 @@ func (ac ActivityChart) drawXAxis(r chart.Renderer) {
 		if ac.RightToLeft {
 			index = n - 1 - index
 		}
+		index = (index + ac.CurrentMonth) % n
 
 		label := activityChartMonthLabels[index]
 		chart.Draw.Text(r, label, x, y, style)
