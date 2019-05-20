@@ -47,8 +47,9 @@ type ActivityChart struct {
 	XAxis chart.Style
 	YAxis chart.Style
 
-	Days       []int
-	CurrentDay int // 0-6
+	Days        []int
+	CurrentDay  int // 0-6
+	LeftToRight bool
 
 	// Layout info and other cached valued (all updated in `layout()`)
 	titleX      int
@@ -250,6 +251,11 @@ func (ac ActivityChart) drawDots(r chart.Renderer) {
 		offset := i + ac.CurrentDay
 		week := offset / daysPerWeek
 		day := offset % daysPerWeek
+
+		// Flip the week when right-to-left
+		if !ac.LeftToRight {
+			week = ac.numWeeks - 1 - week
+		}
 
 		x := ac.chartX + week*(size+spacing)
 		y := ac.chartY + day*(size+spacing)
