@@ -44,8 +44,9 @@ type ActivityChart struct {
 	Font        *truetype.Font
 	defaultFont *truetype.Font
 
-	XAxis chart.Style
-	YAxis chart.Style
+	XAxis  chart.Style
+	YAxis  chart.Style
+	Legend chart.Style
 
 	Days         []int
 	CurrentDay   int // 0-6
@@ -163,6 +164,7 @@ func (ac ActivityChart) Render(rp chart.RendererProvider, w io.Writer) error {
 	ac.drawDots(r)
 	ac.drawXAxis(r)
 	ac.drawYAxis(r)
+	ac.drawLegend(r)
 
 	return r.Save(w)
 }
@@ -336,6 +338,42 @@ func (ac ActivityChart) drawYAxis(r chart.Renderer) {
 		x := ac.chartX - maxWidth - 5
 		y := ac.chartY + (dotSize+dotSpacing)*i + boxes[i].Height()
 		chart.Draw.Text(r, text, x, y, style)
+	}
+}
+
+func (ac ActivityChart) drawLegend(r chart.Renderer) {
+	if !ac.Legend.Show {
+		return
+	}
+
+	style := ac.Legend.InheritFrom(ac.styleDefaultsAxes())
+	dotSize := ac.GetDotSize()
+	x := ac.chartX
+	y := ac.chartY + ac.chartHeight + dotSize*2
+
+	numColors := len(activityChartDefaultColors) - 1
+	for i := 0; i < numColors; i++ {
+		min := i*ac.maxValue/numColors + 1
+		max := (i + 1) * ac.maxValue / numColors
+
+		label := fmt.Sprintf(" - %d-%d", min, max)
+
+		// For some reason this has to be set every time. Probably render functions mess it up.
+		style.GetTextOptions().WriteToRenderer(r)
+		textSize := r.MeasureText(label)
+
+		dotBox := chart.Box{
+			Left:   x,
+			Top:    y,
+			Right:  x + dotSize,
+			Bottom: y + dotSize,
+		}
+
+		chart.Draw.Box(r, dotBox, ac.getDotStyle((min+max)/2))
+		x += dotSize
+
+		chart.Draw.Text(r, label, x, y+(dotSize+textSize.Height())/2, style)
+		x += textSize.Width() + dotSize
 	}
 }
 
