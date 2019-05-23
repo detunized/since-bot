@@ -296,16 +296,11 @@ func (ac ActivityChart) drawXAxis(r chart.Renderer) {
 	}
 
 	boxes := measureStrings(r, labels)
-
-	totalLabelWidth := 0
-	for _, box := range boxes {
-		totalLabelWidth += box.Width()
-	}
-
+	totalLabelWidth, _ := getTotalWidthHeight(boxes)
 	labelGap := (width - totalLabelWidth) / n
 
 	x := ac.chartX
-	y := ac.chartY - 10
+	y := ac.chartY - dotSize
 
 	for i, label := range labels {
 		chart.Draw.Text(r, label, x, y, style)
@@ -335,7 +330,7 @@ func (ac ActivityChart) drawYAxis(r chart.Renderer) {
 		text := fmt.Sprintf("%s %v", label, boxes[i])
 		text = label
 
-		x := ac.chartX - maxWidth - 5
+		x := ac.chartX - maxWidth - dotSize
 		y := ac.chartY + (dotSize+dotSpacing)*i + boxes[i].Height()
 		chart.Draw.Text(r, text, x, y, style)
 	}
@@ -347,21 +342,28 @@ func (ac ActivityChart) drawLegend(r chart.Renderer) {
 	}
 
 	style := ac.Legend.InheritFrom(ac.styleDefaultsAxes())
-	dotSize := ac.GetDotSize()
-	x := ac.chartX
-	y := ac.chartY + ac.chartHeight + dotSize*2
+	style.GetTextOptions().WriteToRenderer(r)
 
+	dotSize := ac.GetDotSize()
 	numColors := len(activityChartDefaultColors) - 1
+
+	labels := make([]string, numColors)
+	dotStyles := make([]chart.Style, numColors)
 	for i := 0; i < numColors; i++ {
 		min := i*ac.maxValue/numColors + 1
 		max := (i + 1) * ac.maxValue / numColors
+		labels[i] = fmt.Sprintf(" - %d-%d", min, max)
+		dotStyles[i] = ac.getDotStyle((min + max) / 2)
+	}
 
-		label := fmt.Sprintf(" - %d-%d", min, max)
+	labelSizes := measureStrings(r, labels)
+	totalLabelWidth, _ := getTotalWidthHeight(labelSizes)
+	totalWidth := totalLabelWidth + numColors*dotSize + (numColors-1)*dotSize
 
-		// For some reason this has to be set every time. Probably render functions mess it up.
-		style.GetTextOptions().WriteToRenderer(r)
-		textSize := r.MeasureText(label)
+	x := ac.chartX + (ac.chartWidth-totalWidth)/2
+	y := ac.chartY + ac.chartHeight + dotSize
 
+	for i := 0; i < numColors; i++ {
 		dotBox := chart.Box{
 			Left:   x,
 			Top:    y,
@@ -369,11 +371,11 @@ func (ac ActivityChart) drawLegend(r chart.Renderer) {
 			Bottom: y + dotSize,
 		}
 
-		chart.Draw.Box(r, dotBox, ac.getDotStyle((min+max)/2))
+		chart.Draw.Box(r, dotBox, dotStyles[i])
 		x += dotSize
 
-		chart.Draw.Text(r, label, x, y+(dotSize+textSize.Height())/2, style)
-		x += textSize.Width() + dotSize
+		chart.Draw.Text(r, labels[i], x, y+(dotSize+labelSizes[i].Height())/2, style)
+		x += labelSizes[i].Width() + dotSize
 	}
 }
 
@@ -413,6 +415,17 @@ func getMaxWidthHeight(boxes []chart.Box) (int, int) {
 	for _, box := range boxes {
 		w = util.Math.MaxInt(w, box.Width())
 		h = util.Math.MaxInt(h, box.Height())
+	}
+
+	return w, h
+}
+
+func getTotalWidthHeight(boxes []chart.Box) (int, int) {
+	w := 0
+	h := 0
+	for _, box := range boxes {
+		w += box.Width()
+		h += box.Height()
 	}
 
 	return w, h
